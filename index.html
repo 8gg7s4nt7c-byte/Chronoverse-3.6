@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chronoverse</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #050814;
+      font-family: Arial;
+      color: white;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #panel {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 300px;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+
+    button {
+      width: 100%;
+      margin: 4px 0;
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    #loginBox {
+      margin-bottom: 10px;
+    }
+
+    input {
+      width: 100%;
+      padding: 6px;
+      margin-bottom: 6px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+<canvas id="world"></canvas>
+
+<div id="panel">
+
+  <h2>CHRONOVERSE</h2>
+
+  <!-- LOGIN -->
+  <div id="loginBox">
+    <input type="password" id="pass" placeholder="Enter admin password">
+    <button onclick="login()">Unlock God View</button>
+  </div>
+
+  <!-- ADMIN CONTROLS -->
+  <div id="admin" class="hidden">
+
+    <h3>GOD MODE</h3>
+
+    <button onclick="injectChaos()">Inject Chaos</button>
+    <button onclick="stabilise()">Stabilise</button>
+    <button onclick="spawnEmpire()">Spawn Empire</button>
+    <button onclick="forceCollapse()">Force Collapse</button>
+
+    <hr/>
+  </div>
+
+  <div id="stats"></div>
+  <div id="log"></div>
+</div>
+
+<script>
+/* =======================
+   CANVAS SETUP
+======================= */
+const canvas = document.getElementById("world");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth - 300;
+canvas.height = window.innerHeight;
+
+const logBox = document.getElementById("log");
+const statsBox = document.getElementById("stats");
+
+/* =======================
+   WORLD STATE
+======================= */
+let world = { entropy: 0.3 };
+
+/* =======================
+   LOGIN SYSTEM (CLIENT SIDE ONLY)
+======================= */
+function login(){
+  const pass = document.getElementById("pass").value;
+
+  if(pass === "atlasVale"){
+    document.getElementById("admin").classList.remove("hidden");
+    document.getElementById("loginBox").style.display = "none";
+    log("🔓 God mode unlocked");
+  } else {
+    alert("Wrong password");
+  }
+}
+
+/* =======================
+   LOG SYSTEM
+======================= */
+let timeline = [];
+
+function log(msg){
+  timeline.push(msg);
+  if(timeline.length > 40) timeline.shift();
+  logBox.innerHTML = timeline.slice(-12).map(e => `<div>${e}</div>`).join("");
+}
+
+/* =======================
+   EMPIRES
+======================= */
+let empires = [
+  { id:0, color:"red", stability:0.6, population:0, alive:true },
+  { id:1, color:"blue", stability:0.6, population:0, alive:true }
+];
+
+/* =======================
+   AGENTS
+======================= */
+let agents = [];
+
+for(let i=0;i<120;i++){
+  agents.push({
+    id:i,
+    x:Math.random()*canvas.width,
+    y:Math.random()*canvas.height,
+    vx:(Math.random()-0.5)*2,
+    vy:(Math.random()-0.5)*2,
+    empire:Math.random()<0.5?0:1,
+    aggression:Math.random(),
+    cooperation:Math.random()
+  });
+}
+
+/* =======================
+   TERRITORY GRID
+======================= */
+const gridSize = 25;
+let cols = Math.floor(canvas.width / gridSize);
+let rows = Math.floor(canvas.height / gridSize);
+
+let grid = [];
+
+for(let x=0;x<cols;x++){
+  for(let y=0;y<rows;y++){
+    grid.push({x,y,owner:null});
+  }
+}
+
+/* =======================
+   CLIMATE
+======================= */
+let climate = { disaster:0.2 };
+
+/* =======================
+   UPDATE CLIMATE
+======================= */
+function updateClimate(){
+  climate.disaster += (Math.random()-0.5)*0.01;
+  climate.disaster = Math.max(0,Math.min(1,climate.disaster));
+
+  if(climate.disaster > 0.75){
+    world.entropy += 0.01;
+    log("🌪 Climate instability spike");
+  }
+}
+
+/* =======================
+   UPDATE AGENTS
+======================= */
+function updateAgents(){
+
+  empires.forEach(e => e.population = 0);
+
+  agents.forEach(a => {
+
+    a.x += a.vx;
+    a.y += a.vy;
+
+    if(a.x<0||a.x>canvas.width) a.vx*=-1;
+    if(a.y<0||a.y>canvas.height) a.vy*=-1;
+
+    if(Math.random()<a.aggression){
+      a.vx += (Math.random()-0.5)*0.2;
+    }
+
+    if(Math.random()<a.cooperation){
+      a.vx *= 0.99;
+      a.vy *= 0.99;
+    }
+
+    empires[a.empire].population++;
+  });
+}
+
+/* =======================
+   TERRITORY SYSTEM
+======================= */
+function updateTerritory(){
+
+  grid.forEach(c => {
+
+    let closest = null;
+    let best = 999;
+
+    agents.forEach(a => {
+
+      let dx = (a.x/gridSize)-c.x;
+      let dy = (a.y/gridSize)-c.y;
+      let d = dx*dx + dy*dy;
+
+      if(d<best){
+        best=d;
+        closest=a;
+      }
+
+    });
+
+    if(closest){
+      c.owner = closest.empire;
+    }
+
+  });
+}
+
+/* =======================
+   WAR SYSTEM
+======================= */
+function updateWars(){
+
+  if(Math.random()<0.02){
+
+    let A = empires[0];
+    let B = empires[1];
+
+    let pA = A.population*A.stability;
+    let pB = B.population*B.stability;
+
+    if(pA>pB){
+      B.stability -= 0.08;
+      log("⚔ RED pushes BLUE back");
+    } else {
+      A.stability -= 0.08;
+      log("⚔ BLUE resists RED");
+    }
+  }
+}
+
+/* =======================
+   COLLAPSE + REBIRTH
+======================= */
+function checkCollapse(){
+
+  empires.forEach(e => {
+
+    if(e.stability < 0.15 && e.alive){
+
+      e.alive = false;
+      log(`💀 Empire ${e.color} collapsed`);
+
+      setTimeout(()=>{
+        e.stability = 0.5;
+        e.alive = true;
+        log(`🌱 Empire ${e.color} reborn`);
+      },2000);
+    }
+
+  });
+
+}
+
+/* =======================
+   GOD CONTROLS
+======================= */
+function injectChaos(){
+  empires.forEach(e => e.stability -= 0.2);
+  log("💥 Chaos injected");
+}
+
+function stabilise(){
+  empires.forEach(e => e.stability += 0.2);
+  log("🧘 Stability restored");
+}
+
+function spawnEmpire(){
+  empires.push({
+    id:empires.length,
+    color:"green",
+    stability:0.5,
+    population:0,
+    alive:true
+  });
+  log("🏳 New empire spawned");
+}
+
+function forceCollapse(){
+  let e = empires[Math.floor(Math.random()*empires.length)];
+  e.stability = 0.1;
+  log("☠ Forced collapse triggered");
+}
+
+/* =======================
+   DRAW
+======================= */
+function draw(){
+
+  ctx.fillStyle="rgba(0,0,0,0.25)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // territory
+  grid.forEach(c=>{
+    if(!c.owner && c.owner!==0) return;
+
+    ctx.fillStyle = empires[c.owner]?.color || "white";
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(c.x*gridSize,c.y*gridSize,gridSize,gridSize);
+  });
+
+  ctx.globalAlpha=1;
+
+  // agents
+  agents.forEach(a=>{
+    ctx.fillStyle = empires[a.empire].color;
+    ctx.fillRect(a.x,a.y,3,3);
+  });
+
+}
+
+/* =======================
+   STATS
+======================= */
+function updateStats(){
+  statsBox.innerHTML = empires.map(e =>
+    `${e.color}: pop ${e.population} | stability ${e.stability.toFixed(2)}`
+  ).join("<br>");
+}
+
+/* =======================
+   MAIN LOOP
+======================= */
+function loop(){
+
+  updateClimate();
+  updateAgents();
+  updateTerritory();
+  updateWars();
+  checkCollapse();
+  updateStats();
+  draw();
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
